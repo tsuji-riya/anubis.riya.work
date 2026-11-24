@@ -2,7 +2,7 @@
 
 [anubis.riya.work](https://anubis.riya.work) の静的サイトです。[Anubis](https://github.com/TecharoHQ/anubis) のチェッカーを通ると、Anubis ちゃんを無限に出し続けます。
 
-このリポジトリにあるのはサイト本体 (`site/`) と、それを配る nginx のイメージだけです。前段の Anubis とそのポリシー (`botPolicy.yaml`) は [tsuji-riya/lab](https://github.com/tsuji-riya/lab) の `apps/anubis/` にあります。
+このリポジトリにあるのはサイト本体 (`site/`) と、それを配る自作サーバー (Go 標準ライブラリのみ、scratch イメージ) のイメージだけです。前段の Anubis とそのポリシー (`botPolicy.yaml`) は [tsuji-riya/lab](https://github.com/tsuji-riya/lab) の `apps/anubis/` にあります。
 
 ## 手元で動かす
 
