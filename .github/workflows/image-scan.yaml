@@ -1,0 +1,63 @@
+name: image-scan
+
+# ghcr.io/tsuji-riya/<このリポジトリ名> の最新リリースを Trivy でスキャンし、
+# 結果を Security タブ (code scanning) に上げる。
+# SARIF のアップロードは PR では行わない (下の upload ステップ参照)
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/image.yaml, .github/workflows/image-scan.yaml]
+  schedule:
+    # 毎日 03:00 JST
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: image-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      # image.yaml は 1.0.<実行番号> のタグだけを付けるので、数値順で最大のものが最新。
+      # shortcut: tags/list の 1 ページ目だけ読む (n=1000 超で打ち切り)。超えたら Link ヘッダを辿る
+      - id: tag
+        run: |
+          token=$(curl -fsS -u "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            "https://ghcr.io/token?scope=repository:${GITHUB_REPOSITORY}:pull" | jq -r .token)
+          tag=$(curl -fsS -H "Authorization: Bearer $token" \
+            "https://ghcr.io/v2/${GITHUB_REPOSITORY}/tags/list?n=1000" \
+            | jq -r '.tags[]' | grep -E '^1\.0\.[0-9]+$' | sort -V | tail -n1)
+          test -n "$tag" || { echo "no release tag found for $IMAGE" >&2; exit 1; }
+          echo "ref=$IMAGE:$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Scan ${{ steps.tag.outputs.ref }}
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image-ref: ${{ steps.tag.outputs.ref }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: HIGH,CRITICAL
+          # 修正版が無い脆弱性はノイズになるので載せない
+          ignore-unfixed: true
+          # 検出してもジョブは落とさず、Security タブのアラートで追う
+          exit-code: "0"
+
+      # PR で SARIF を上げると github-advanced-security[bot] が
+      # 「Code Scanning が設定されました」という定型コメントを PR ごとに付けるので、
+      # アップロードは PR 以外の実行 (push / schedule / 手動) だけにする
+      - uses: github/codeql-action/upload-sarif@v4
+        if: github.event_name != 'pull_request'
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-${{ github.event.repository.name }}
